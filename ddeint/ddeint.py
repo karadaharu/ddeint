@@ -16,15 +16,17 @@ class ddeVar:
     Very convenient for the integration of DDEs.
     """
 
-    def __init__(self,g,tc=0):
+    def __init__(self,g,tc=0, Y0=None):
         """ g(t) = expression of Y(t) for t<tc """
 
         self.g = g
         self.tc= tc
+        if Y0 is None:
+            Y0 = self.g(tc)
         # We must fill the interpolator with 2 points minimum
         self.itpr = scipy.interpolate.interp1d(
-            np.array([tc-1,tc]), # X
-            np.array([self.g(tc),self.g(tc)]).T, # Y
+            np.array([tc-1,tc-1.0E-10,tc]), # X
+            np.array([self.g(tc-1), self.g(tc-1.0E-10), Y0]).T, # Y
             kind='linear', bounds_error=False,
             fill_value = self.g(tc))
 
@@ -42,7 +44,7 @@ class ddeVar:
     def __call__(self,t=0):
         """ Y(t) will return the instance's value at time t """
 
-        return (self.g(t) if (t<=self.tc) else self.itpr(t))
+        return (self.g(t) if (t<self.tc) else self.itpr(t))
 
 
 
@@ -69,11 +71,12 @@ class dde(scipy.integrate.ode):
     def set_initial_value(self,Y):
 
         self.Y = Y #!!! Y will be modified during integration
-        scipy.integrate.ode.set_initial_value(self, Y(Y.tc), Y.tc)
+        y0 = Y(Y.tc)
+        if isinstance(y0, np.ndarray) and np.ndim(y0)==0:
+            y0 = y0.item() # set_initial_value doesn't accept 0-dim array
+        scipy.integrate.ode.set_initial_value(self, y0, Y.tc)
 
-
-
-def ddeint(func,g,tt,fargs=None):
+def ddeint(func,g,tt,fargs=None, Y0=None, with_model=False):
     """ Solves Delay Differential Equations
 
     Similar to scipy.integrate.odeint. Solves a Delay differential
@@ -106,6 +109,11 @@ def ddeint(func,g,tt,fargs=None):
     fargs
       Additional arguments to be passed to parameter ``func``, if any.
 
+    Y0
+      Initial values of the system at t=t0, if they are not g(t0).
+    
+    with_model
+      An option to return the interpolator of the result to calculate values out of the argument `tt`
 
     Examples
     ---------
@@ -138,7 +146,10 @@ def ddeint(func,g,tt,fargs=None):
     """
 
     dde_ = dde(func)
-    dde_.set_initial_value(ddeVar(g,tt[0]))
+    dde_.set_initial_value(ddeVar(g,tt[0],Y0))
     dde_.set_f_params(fargs if fargs else [])
     results = [dde_.integrate(dde_.t + dt) for dt in np.diff(tt)]
-    return np.array( [g(tt[0])] + results)
+    if with_model:
+        return [np.array( [g(tt[0])] + results), dde_.Y]
+    else:
+        return np.array( [g(tt[0])] + results)
