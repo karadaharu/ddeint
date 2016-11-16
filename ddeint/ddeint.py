@@ -148,7 +148,12 @@ def ddeint(func,g,tt,fargs=None, Y0=None, with_model=False):
     dde_ = dde(func)
     dde_.set_initial_value(ddeVar(g,tt[0],Y0))
     dde_.set_f_params(fargs if fargs else [])
-    results = [dde_.integrate(dde_.t + dt) for dt in np.diff(tt)]
+    dts = np.diff(tt)
+    results = []
+    for i, dt in enumerate(dts):
+        results.append(dde_.integrate(dde_.t + dt))
+        if not dde_.successful():
+            break
     if with_model:
         return [np.array( [g(tt[0])] + results), dde_.Y]
     else:
